@@ -5,126 +5,131 @@ const Review = require("../models/Review");
 const router = express.Router();
 
 /* =========================
-   AUTH HELPER
+AUTH HELPER
 ========================= */
 function getUser(req) {
-    const authHeader = req.headers.authorization;
+const authHeader = req.headers.authorization;
 
-    if (!authHeader) return null;
+if (!authHeader) return null;
 
-    const token = authHeader.replace("Bearer ", "");
+const token = authHeader.replace("Bearer ", "");
 
-    try {
-        return jwt.verify(token, process.env.JWT_SECRET);
-    } catch {
-        return null;
-    }
+try {
+    return jwt.verify(token, process.env.JWT_SECRET);
+} catch {
+    return null;
+}
+
 }
 
 /* =========================
-   CREATE REVIEW
+CREATE OR UPDATE REVIEW
 ========================= */
 router.post("/", async (req, res) => {
-    try {
-        const user = getUser(req);
+try {
+const user = getUser(req);
 
-        if (!user) {
-            return res.status(401).json({ error: "Invalid or missing token" });
-        }
-
-        const { appId, rating, comment } = req.body;
-
-        if (!appId || !rating || !comment) {
-            return res.status(400).json({ error: "Missing fields" });
-        }
-
-        const review = await Review.create({
-            userId: user.id,
-            username: user.username,
-            appId,
-            rating,
-            comment
+    if (!user) {
+        return res.status(401).json({
+            error: "Invalid or missing token"
         });
-
-        res.json({ success: true, review });
-
-    } catch (err) {
-        res.status(500).json({ error: err.message });
     }
+
+    const { appId, rating, comment } = req.body;
+
+    if (!appId || !rating || !comment) {
+        return res.status(400).json({
+            error: "Missing fields"
+        });
+    }
+
+    const review = await Review.findOneAndUpdate(
+        {
+            userId: user.id,
+            appId: appId
+        },
+        {
+            username: user.username,
+            rating: rating,
+            comment: comment,
+            updatedAt: new Date()
+        },
+        {
+            new: true,
+            upsert: true,
+            setDefaultsOnInsert: true
+        }
+    );
+
+    res.json({
+        success: true,
+        review
+    });
+
+} catch (err) {
+    res.status(500).json({
+        error: err.message
+    });
+}
+
 });
 
 /* =========================
-   GET REVIEWS BY APP
+GET REVIEWS FOR APP
 ========================= */
-router.get("/:appId", async (req, res) => {
-    try {
-        const reviews = await Review.find({ appId: req.params.appId })
-            .sort({ createdAt: -1 });
+router.get("/", async (req, res) => {
+try {
+const reviews = await Review.find({
+appId: req.params.appId
+})
+.sort({
+updatedAt: -1
+});
 
-        res.json(reviews);
+    res.json(reviews);
 
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
+} catch (err) {
+    res.status(500).json({
+        error: err.message
+    });
+}
+
 });
 
 /* =========================
-   UPDATE REVIEW (OWNER ONLY)
+DELETE OWN REVIEW
 ========================= */
-router.put("/:id", async (req, res) => {
-    try {
-        const user = getUser(req);
-        if (!user) return res.status(401).json({ error: "Unauthorized" });
+router.delete("/", async (req, res) => {
+try {
+const user = getUser(req);
 
-        const review = await Review.findById(req.params.id);
-
-        if (!review) {
-            return res.status(404).json({ error: "Review not found" });
-        }
-
-        if (review.userId.toString() !== user.id) {
-            return res.status(403).json({ error: "Not allowed" });
-        }
-
-        const { rating, comment } = req.body;
-
-        if (rating) review.rating = rating;
-        if (comment) review.comment = comment;
-
-        await review.save();
-
-        res.json({ success: true, review });
-
-    } catch (err) {
-        res.status(500).json({ error: err.message });
+    if (!user) {
+        return res.status(401).json({
+            error: "Unauthorized"
+        });
     }
-});
 
-/* =========================
-   DELETE REVIEW (OWNER ONLY)
-========================= */
-router.delete("/:id", async (req, res) => {
-    try {
-        const user = getUser(req);
-        if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const deleted = await Review.findOneAndDelete({
+        userId: user.id,
+        appId: req.params.appId
+    });
 
-        const review = await Review.findById(req.params.id);
-
-        if (!review) {
-            return res.status(404).json({ error: "Review not found" });
-        }
-
-        if (review.userId.toString() !== user.id) {
-            return res.status(403).json({ error: "Not allowed" });
-        }
-
-        await review.deleteOne();
-
-        res.json({ success: true });
-
-    } catch (err) {
-        res.status(500).json({ error: err.message });
+    if (!deleted) {
+        return res.status(404).json({
+            error: "Review not found"
+        });
     }
+
+    res.json({
+        success: true
+    });
+
+} catch (err) {
+    res.status(500).json({
+        error: err.message
+    });
+}
+
 });
 
 module.exports = router;
