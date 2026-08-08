@@ -12,10 +12,10 @@ const HOST = process.env.HOST || "0.0.0.0";
 app.use(cors());
 app.use(express.json());
 
-app.use("/auth", require("./routes/auth"));
-app.use("/reviews", require("./routes/reviews"));
+app.use("/ns-status/auth", require("./routes/auth"));
+app.use("/ns-status/reviews", require("./routes/reviews"));
 
-app.get("/", (req, res) => {
+app.get("/ns-status/", (req, res) => {
     res.send("NeonStore API running ✔");
 });
 
