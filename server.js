@@ -14,6 +14,10 @@ app.use(express.json());
 
 app.use("/ns-status/auth", require("./routes/auth"));
 app.use("/ns-status/reviews", require("./routes/reviews"));
+app.use(
+    "/ns-status/comments",
+    require("./routes/comments")
+);
 
 app.get("/ns-status", (req, res) => {
     res.send("NeonStore API running ✔");
