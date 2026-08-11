@@ -100,22 +100,31 @@ router.post("/", async (req, res) => {
    GET COMMENTS FOR NEWS
 ========================= */
 
-router.get("/:newsId", async (req, res) => {
+router.get("/", async (req, res) => {
 
     try {
 
+        const { newsId } = req.query;
+
+        if (!newsId) {
+            return res.status(400).json({
+                error: "Missing newsId"
+            });
+        }
+
         const comments = await Comment.find({
-            newsId: req.params.newsId
+            newsId: newsId
         })
         .sort({
             updatedAt: -1
         });
 
-
         res.json(comments);
 
     }
     catch (err) {
+
+        console.error(err);
 
         res.status(500).json({
             error: err.message
