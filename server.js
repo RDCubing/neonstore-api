@@ -19,6 +19,11 @@ app.use(
     require("./routes/comments")
 );
 
+app.use(
+    "/ns-status/apps",
+    require("./routes/apps")
+);
+
 app.get("/ns-status", (req, res) => {
     res.send("NeonStore API running ✔");
 });
