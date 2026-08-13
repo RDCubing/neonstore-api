@@ -420,5 +420,38 @@ router.delete(
     }
 });
 
+/* =========================
+   GET SUBMISSION COUNTS
+========================= */
+
+router.get("/stats", async (req, res) =>
+{
+    try
+    {
+        const approved =
+            await AppSubmission.countDocuments({
+                status: "approved"
+            });
+
+        const pending =
+            await AppSubmission.countDocuments({
+                status: "pending"
+            });
+
+        res.json({
+            approved,
+            pending
+        });
+    }
+    catch (err)
+    {
+        console.error(err);
+
+        res.status(500).json({
+            error: err.message
+        });
+    }
+});
+
 
 module.exports = router;
