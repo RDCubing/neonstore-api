@@ -102,22 +102,23 @@ router.post("/submit", async (req, res) =>
          */
 
         if (
-            !Title ||
-            !Category ||
-            !Subtitle ||
-            !Publisher ||
-            !ImagePath ||
-            !Version ||
-            !Framework ||
-            !Description ||
-            !DownloadUrl
-        )
-        {
-            return res.status(400).json({
-                error:
-                    "Missing required fields"
-            });
-        }
+			!Title ||
+			!Category ||
+			!Subtitle ||
+			!Publisher ||
+			!ImagePath ||
+			!DetailImagePath ||
+			!Version ||
+			!Framework ||
+			!Description ||
+			!DownloadUrl
+		)
+		{
+			return res.status(400).json({
+				error:
+					"Missing required fields"
+			});
+		}
 
 
         /*

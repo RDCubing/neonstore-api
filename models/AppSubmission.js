@@ -37,10 +37,10 @@ const AppSubmissionSchema = new mongoose.Schema(
     },
 
     DetailImagePath: {
-        type: String,
-        required: false,
-        trim: true
-    },
+		type: String,
+		required: true,
+		trim: true
+	},
 
     Version: {
         type: String,
