@@ -42,10 +42,36 @@ function getUser(req)
 
 
 /* =========================
+   URL VALIDATOR
+========================= */
+
+function isValidUrl(value)
+{
+    try
+    {
+        const url =
+            new URL(value);
+
+
+        return (
+            url.protocol === "http:" ||
+            url.protocol === "https:"
+        );
+    }
+    catch
+    {
+        return false;
+    }
+}
+
+
+/* =========================
    SUBMIT APPLICATION
 ========================= */
 
-router.post("/submit", async (req, res) =>
+router.post(
+    "/submit",
+    async (req, res) =>
 {
     try
     {
@@ -69,8 +95,11 @@ router.post("/submit", async (req, res) =>
 
         const existing =
             await AppSubmission.findOne({
-                submittedBy: user.id,
-                status: "pending"
+                submittedBy:
+                    user.id,
+
+                status:
+                    "pending"
             });
 
 
@@ -82,6 +111,10 @@ router.post("/submit", async (req, res) =>
             });
         }
 
+
+        /*
+         * Read submitted fields.
+         */
 
         const {
             Title,
@@ -98,34 +131,65 @@ router.post("/submit", async (req, res) =>
 
 
         /*
-         * Required fields
+         * Required fields.
          */
 
         if (
-			!Title ||
-			!Category ||
-			!Subtitle ||
-			!Publisher ||
-			!ImagePath ||
-			!DetailImagePath ||
-			!Version ||
-			!Framework ||
-			!Description ||
-			!DownloadUrl
-		)
-		{
-			return res.status(400).json({
-				error:
-					"Missing required fields"
-			});
-		}
+            !Title ||
+            !Category ||
+            !Subtitle ||
+            !Publisher ||
+            !ImagePath ||
+            !DetailImagePath ||
+            !Version ||
+            !Framework ||
+            !Description ||
+            !DownloadUrl
+        )
+        {
+            return res.status(400).json({
+                error:
+                    "Missing required fields"
+            });
+        }
+
+
+        /*
+         * Validate URLs.
+         */
+
+        if (!isValidUrl(ImagePath))
+        {
+            return res.status(400).json({
+                error:
+                    "Application icon URL is invalid."
+            });
+        }
+
+
+        if (!isValidUrl(DetailImagePath))
+        {
+            return res.status(400).json({
+                error:
+                    "Screenshot URL is invalid."
+            });
+        }
+
+
+        if (!isValidUrl(DownloadUrl))
+        {
+            return res.status(400).json({
+                error:
+                    "Download URL is invalid."
+            });
+        }
 
 
         /*
          * Create submission.
          *
          * status is deliberately NOT
-         * taken from req.body.
+         * accepted from req.body.
          */
 
         const submission =
@@ -135,14 +199,18 @@ router.post("/submit", async (req, res) =>
                 Category,
                 Subtitle,
                 Publisher,
+
                 ImagePath,
                 DetailImagePath,
+
                 Version,
                 Framework,
+
                 Description,
                 DownloadUrl,
 
-                status: "pending",
+                status:
+                    "pending",
 
                 submittedBy:
                     user.id,
@@ -153,9 +221,14 @@ router.post("/submit", async (req, res) =>
             });
 
 
+        /*
+         * Return success.
+         */
+
         res.status(201).json({
 
-            success: true,
+            success:
+                true,
 
             message:
                 "Application submitted for review.",
@@ -163,11 +236,11 @@ router.post("/submit", async (req, res) =>
             submission
 
         });
-
     }
     catch (err)
     {
         console.error(err);
+
 
         res.status(500).json({
             error:
@@ -178,10 +251,12 @@ router.post("/submit", async (req, res) =>
 
 
 /* =========================
-   GET OWN SUBMISSION STATUS
+   GET OWN SUBMISSIONS
 ========================= */
 
-router.get("/mine", async (req, res) =>
+router.get(
+    "/mine",
+    async (req, res) =>
 {
     try
     {
@@ -204,18 +279,19 @@ router.get("/mine", async (req, res) =>
                     user.id
             })
             .sort({
-                createdAt: -1
+                createdAt:
+                    -1
             });
 
 
         res.json(
             submissions
         );
-
     }
     catch (err)
     {
         console.error(err);
+
 
         res.status(500).json({
             error:
@@ -227,15 +303,11 @@ router.get("/mine", async (req, res) =>
 
 /* =========================
    GET PENDING SUBMISSIONS
-=========================
-
-   This is mainly useful for admins
-   who want to inspect submissions
-   through the API.
-
 ========================= */
 
-router.get("/pending", async (req, res) =>
+router.get(
+    "/pending",
+    async (req, res) =>
 {
     try
     {
@@ -253,31 +325,31 @@ router.get("/pending", async (req, res) =>
 
 
         /*
-         * No admin system yet.
+         * TODO:
          *
-         * Keep this endpoint available
-         * for now, but you should add
-         * an admin check before exposing
-         * it publicly.
+         * Add an administrator
+         * permission check here.
          */
 
         const submissions =
             await AppSubmission.find({
-                status: "pending"
+                status:
+                    "pending"
             })
             .sort({
-                createdAt: 1
+                createdAt:
+                    1
             });
 
 
         res.json(
             submissions
         );
-
     }
     catch (err)
     {
         console.error(err);
+
 
         res.status(500).json({
             error:
@@ -310,6 +382,13 @@ router.post(
         }
 
 
+        /*
+         * TODO:
+         *
+         * Add administrator
+         * permission check here.
+         */
+
         const submission =
             await AppSubmission.findById(
                 req.params.id
@@ -334,7 +413,8 @@ router.post(
 
         res.json({
 
-            success: true,
+            success:
+                true,
 
             message:
                 "Application approved.",
@@ -342,11 +422,11 @@ router.post(
             submission
 
         });
-
     }
     catch (err)
     {
         console.error(err);
+
 
         res.status(500).json({
             error:
@@ -358,11 +438,6 @@ router.post(
 
 /* =========================
    DELETE SUBMISSION
-=========================
-
-   For rejection, you can simply
-   delete the document from MongoDB.
-
 ========================= */
 
 router.delete(
@@ -384,6 +459,13 @@ router.delete(
         }
 
 
+        /*
+         * TODO:
+         *
+         * Add administrator
+         * permission check here.
+         */
+
         const deleted =
             await AppSubmission.findByIdAndDelete(
                 req.params.id
@@ -401,17 +483,18 @@ router.delete(
 
         res.json({
 
-            success: true,
+            success:
+                true,
 
             message:
                 "Submission deleted."
 
         });
-
     }
     catch (err)
     {
         console.error(err);
+
 
         res.status(500).json({
             error:
@@ -420,38 +503,50 @@ router.delete(
     }
 });
 
+
 /* =========================
    GET SUBMISSION COUNTS
 ========================= */
 
-router.get("/stats", async (req, res) =>
+router.get(
+    "/stats",
+    async (req, res) =>
 {
     try
     {
         const approved =
             await AppSubmission.countDocuments({
-                status: "approved"
+                status:
+                    "approved"
             });
+
 
         const pending =
             await AppSubmission.countDocuments({
-                status: "pending"
+                status:
+                    "pending"
             });
 
+
         res.json({
+
             approved,
             pending
+
         });
     }
     catch (err)
     {
         console.error(err);
 
+
         res.status(500).json({
-            error: err.message
+            error:
+                err.message
         });
     }
 });
 
 
-module.exports = router;
+module.exports =
+    router;
