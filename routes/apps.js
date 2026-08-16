@@ -6,6 +6,178 @@ const AppSubmission =
 
 const router = express.Router();
 
+/* =========================
+   DISCORD SUBMISSION EMBED
+========================= */
+
+async function sendSubmissionEmbed(submission)
+{
+    const webhookUrl =
+        process.env.DISCORD_WEBHOOK_URL;
+
+
+    if (!webhookUrl)
+    {
+        console.log(
+            "Discord webhook URL not configured."
+        );
+
+        return;
+    }
+
+
+    try
+    {
+        const response =
+            await fetch(
+                webhookUrl,
+                {
+                    method:
+                        "POST",
+
+                    headers:
+                    {
+                        "Content-Type":
+                            "application/json"
+                    },
+
+                    body:
+                        JSON.stringify({
+
+                            embeds:
+                            [
+                                {
+                                    title:
+                                        "New WebStore Application Submitted",
+
+                                    description:
+                                        submission.Description,
+
+                                    fields:
+                                    [
+                                        {
+                                            name:
+                                                "Application",
+
+                                            value:
+                                                submission.Title,
+
+                                            inline:
+                                                true
+                                        },
+
+                                        {
+                                            name:
+                                                "Publisher",
+
+                                            value:
+                                                submission.Publisher,
+
+                                            inline:
+                                                true
+                                        },
+
+                                        {
+                                            name:
+                                                "Version",
+
+                                            value:
+                                                submission.Version,
+
+                                            inline:
+                                                true
+                                        },
+
+                                        {
+                                            name:
+                                                "Category",
+
+                                            value:
+                                                submission.Category,
+
+                                            inline:
+                                                true
+                                        },
+
+                                        {
+                                            name:
+                                                "Framework / OS",
+
+                                            value:
+                                                submission.Framework,
+
+                                            inline:
+                                                true
+                                        },
+
+                                        {
+                                            name:
+                                                "Submitted By",
+
+                                            value:
+                                                submission.submittedUsername,
+
+                                            inline:
+                                                true
+                                        },
+
+                                        {
+                                            name:
+                                                "Status",
+
+                                            value:
+                                                "Pending Review",
+
+                                            inline:
+                                                true
+                                        }
+                                    ],
+
+                                    thumbnail:
+                                    {
+                                        url:
+                                            submission.ImagePath
+                                    },
+
+                                    image:
+                                    {
+                                        url:
+                                            submission.DetailImagePath
+                                    },
+
+                                    footer:
+                                    {
+                                        text:
+                                            "Geek Devs Community • WebStore"
+                                    },
+
+                                    timestamp:
+                                        new Date()
+                                            .toISOString()
+                                }
+                            ]
+
+                        })
+                }
+            );
+
+
+        if (!response.ok)
+        {
+            console.error(
+                "Discord webhook failed:",
+                response.status
+            );
+        }
+    }
+    catch (err)
+    {
+        console.error(
+            "Failed to send Discord submission embed:",
+            err
+        );
+    }
+}
 
 /* =========================
    AUTH HELPER
@@ -219,6 +391,10 @@ router.post(
                     user.username
 
             });
+			
+			await sendSubmissionEmbed(
+    submission
+);
 
 
         /*
