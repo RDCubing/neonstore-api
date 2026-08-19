@@ -6,6 +6,7 @@ const AppSubmission =
 
 const router = express.Router();
 
+
 /* =========================
    DISCORD SUBMISSION EMBED
 ========================= */
@@ -179,6 +180,7 @@ async function sendSubmissionEmbed(submission)
     }
 }
 
+
 /* =========================
    AUTH HELPER
 ========================= */
@@ -187,6 +189,7 @@ function getUser(req)
 {
     const authHeader =
         req.headers.authorization;
+
 
     if (!authHeader)
         return null;
@@ -261,30 +264,6 @@ router.post(
 
 
         /*
-         * Only allow one pending
-         * submission per user.
-         */
-
-        const existing =
-            await AppSubmission.findOne({
-                submittedBy:
-                    user.id,
-
-                status:
-                    "pending"
-            });
-
-
-        if (existing)
-        {
-            return res.status(409).json({
-                error:
-                    "You already have a pending app submission."
-            });
-        }
-
-
-        /*
          * Read submitted fields.
          */
 
@@ -327,7 +306,8 @@ router.post(
 
 
         /*
-         * Validate URLs.
+         * Validate application
+         * icon URL.
          */
 
         if (!isValidUrl(ImagePath))
@@ -339,6 +319,11 @@ router.post(
         }
 
 
+        /*
+         * Validate screenshot
+         * URL.
+         */
+
         if (!isValidUrl(DetailImagePath))
         {
             return res.status(400).json({
@@ -347,6 +332,11 @@ router.post(
             });
         }
 
+
+        /*
+         * Validate download
+         * URL.
+         */
 
         if (!isValidUrl(DownloadUrl))
         {
@@ -360,25 +350,37 @@ router.post(
         /*
          * Create submission.
          *
-         * status is deliberately NOT
-         * accepted from req.body.
+         * Users can submit multiple
+         * applications.
+         *
+         * Multiple pending submissions
+         * are allowed.
+         *
+         * Status is always forced
+         * to pending.
          */
 
         const submission =
             await AppSubmission.create({
 
                 Title,
+
                 Category,
+
                 Subtitle,
+
                 Publisher,
 
                 ImagePath,
+
                 DetailImagePath,
 
                 Version,
+
                 Framework,
 
                 Description,
+
                 DownloadUrl,
 
                 status:
@@ -391,10 +393,15 @@ router.post(
                     user.username
 
             });
-			
-			await sendSubmissionEmbed(
-    submission
-);
+
+
+        /*
+         * Send Discord notification.
+         */
+
+        await sendSubmissionEmbed(
+            submission
+        );
 
 
         /*
@@ -503,7 +510,7 @@ router.get(
         /*
          * TODO:
          *
-         * Add an administrator
+         * Add administrator
          * permission check here.
          */
 
@@ -707,6 +714,7 @@ router.get(
         res.json({
 
             approved,
+
             pending
 
         });
