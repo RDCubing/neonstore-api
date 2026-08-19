@@ -26,6 +26,107 @@ function getUser(req) {
     }
 }
 
+/* =========================
+   DISCORD COMMENT EMBED
+========================= */
+
+async function sendCommentEmbed(comment) {
+
+    const webhookUrl =
+        process.env.DISCORD_COMMENTS_URL;
+
+    if (!webhookUrl) {
+        console.log(
+            "Discord comments webhook URL not configured."
+        );
+
+        return;
+    }
+
+    try {
+
+        const response =
+            await fetch(
+                webhookUrl,
+                {
+                    method: "POST",
+
+                    headers: {
+                        "Content-Type":
+                            "application/json"
+                    },
+
+                    body: JSON.stringify({
+
+                        embeds: [
+                            {
+                                title:
+                                    "New News Comment",
+
+                                description:
+                                    comment.comment,
+
+                                fields: [
+                                    {
+                                        name:
+                                            "News",
+
+                                        value:
+                                            String(
+                                                comment.newsId
+                                            ),
+
+                                        inline:
+                                            true
+                                    },
+
+                                    {
+                                        name:
+                                            "Commented By",
+
+                                        value:
+                                            comment.username,
+
+                                        inline:
+                                            true
+                                    }
+                                ],
+
+                                footer: {
+                                    text:
+                                        "Geek Devs Community • News"
+                                },
+
+                                timestamp:
+                                    new Date()
+                                        .toISOString()
+                            }
+                        ]
+
+                    })
+                }
+            );
+
+        if (!response.ok) {
+
+            console.error(
+                "Discord comment webhook failed:",
+                response.status
+            );
+
+        }
+
+    }
+    catch (err) {
+
+        console.error(
+            "Failed to send Discord comment embed:",
+            err
+        );
+
+    }
+}
+
 
 /* =========================
    CREATE OR UPDATE COMMENT
@@ -75,6 +176,8 @@ router.post("/", async (req, res) => {
                 setDefaultsOnInsert: true
             }
         );
+		
+		await sendCommentEmbed(result);
 
 
         res.json({

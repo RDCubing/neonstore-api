@@ -8,6 +8,118 @@ const User = require("../models/User");
 const router = express.Router();
 
 /* =========================
+   DISCORD NEW USER EMBED
+========================= */
+
+async function sendNewUserEmbed(user) {
+
+    const webhookUrl =
+        process.env.DISCORD_USERS_URL;
+
+    if (!webhookUrl) {
+        console.log(
+            "Discord users webhook URL not configured."
+        );
+
+        return;
+    }
+
+    try {
+
+        const response =
+            await fetch(
+                webhookUrl,
+                {
+                    method: "POST",
+
+                    headers: {
+                        "Content-Type":
+                            "application/json"
+                    },
+
+                    body: JSON.stringify({
+
+                        embeds: [
+                            {
+                                title:
+                                    "New GDC Account Created",
+
+                                description:
+                                    `Welcome to the Geek Devs Community, **${user.username}**!`,
+
+                                fields: [
+                                    {
+                                        name:
+                                            "Username",
+
+                                        value:
+                                            user.username,
+
+                                        inline:
+                                            true
+                                    },
+
+                                    {
+                                        name:
+                                            "Joined",
+
+                                        value:
+                                            new Date()
+                                                .toLocaleDateString(
+                                                    "en-US",
+                                                    {
+                                                        year:
+                                                            "numeric",
+
+                                                        month:
+                                                            "long",
+
+                                                        day:
+                                                            "numeric"
+                                                    }
+                                                ),
+
+                                        inline:
+                                            true
+                                    }
+                                ],
+
+                                footer: {
+                                    text:
+                                        "Geek Devs Community • Accounts"
+                                },
+
+                                timestamp:
+                                    new Date()
+                                        .toISOString()
+                            }
+                        ]
+
+                    })
+                }
+            );
+
+        if (!response.ok) {
+
+            console.error(
+                "Discord user webhook failed:",
+                response.status
+            );
+
+        }
+
+    }
+    catch (err) {
+
+        console.error(
+            "Failed to send Discord new user embed:",
+            err
+        );
+
+    }
+}
+
+/* =========================
 REGISTER
 ========================= */
 router.post("/register", async (req, res) => {
@@ -66,12 +178,14 @@ const { email, username, password } = req.body;
     // Hash password
     const hash = await bcrypt.hash(password, 10);
 
-    // Create user
-    await User.create({
-        email,
-        username,
-        passwordHash: hash
-    });
+    const newUser = await User.create({
+		email,
+		username,
+		passwordHash: hash
+	});
+
+	// Discord notification
+	await sendNewUserEmbed(newUser);
 
     return res.json({
         success: true
