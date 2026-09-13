@@ -64,7 +64,7 @@ async function processDiscordUser(discordUser) {
         ? `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.png`
         : null;
 
-// Only permit email linking if Discord explicitly confirmed the email is verified
+    // Only permit email linking if Discord explicitly confirmed the email is verified
     const isEmailVerified = Boolean(discordUser.email && discordUser.verified);
 
     // 1. Locate existing account by permanent Discord Snowflake ID (or verified email fallback)
@@ -74,6 +74,8 @@ async function processDiscordUser(discordUser) {
             ...(isEmailVerified ? [{ email: discordUser.email }] : [])
         ]
     });
+
+    let nameCollision = false;
 
     if (!user) {
         const randomPassword = crypto.randomBytes(32).toString("hex");
@@ -86,9 +88,10 @@ async function processDiscordUser(discordUser) {
         const existingUsername = await User.findOne({ username });
         if (existingUsername) {
             username = `${username}_${discordUser.id.slice(-4)}`;
+            nameCollision = true;
         }
 
-		user = await User.create({
+        user = await User.create({
             username,
             email: isEmailVerified ? discordUser.email : `${discordUser.id}@discord.placeholder`,
             passwordHash,
@@ -112,7 +115,13 @@ async function processDiscordUser(discordUser) {
                 _id: { $ne: user._id } 
             });
 
-            if (!nameTaken) {
+            if (nameTaken) {
+                // Suffix with last 4 digits of snowflake to ensure rename succeeds
+                newUsername = `${currentDiscordName}_${discordUser.id.slice(-4)}`;
+                user.username = newUsername;
+                nameCollision = true;
+                userUpdated = true;
+            } else {
                 user.username = currentDiscordName;
                 newUsername = currentDiscordName;
                 userUpdated = true;
@@ -156,7 +165,7 @@ async function processDiscordUser(discordUser) {
         }
     }
 
-    return user;
+    return { user, nameCollision };
 }
 
 /* =========================
@@ -245,6 +254,37 @@ router.post("/login", async (req, res) => {
 });
 
 /* =========================
+   GET CURRENT USER PROFILE (LIVE HYDRATION)
+========================= */
+router.get("/me", async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+        return res.status(401).json({ error: "Missing authorization header" });
+    }
+
+    const token = authHeader.replace("Bearer ", "");
+
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const user = await User.findById(decoded.id).select("-passwordHash");
+
+        if (!user) {
+            return res.status(404).json({ error: "User not found" });
+        }
+
+        return res.json({
+            id: user._id,
+            username: user.username,
+            avatar: user.avatar || null,
+            email: user.email,
+            discordId: user.discordId || null
+        });
+    } catch (err) {
+        return res.status(401).json({ error: "Invalid or expired token" });
+    }
+});
+
+/* =========================
    DISCORD OAUTH2 (BROWSER)
 ========================= */
 router.get("/discord", (req, res) => {
@@ -291,7 +331,7 @@ router.get("/discord/callback", async (req, res) => {
 
     let targetOrigin = ALLOWED_ORIGINS[0];
     let stateCsrf = null;
-12345
+
     if (state) {
         try {
             const decoded = JSON.parse(Buffer.from(state, "base64url").toString("utf-8"));
@@ -342,7 +382,7 @@ router.get("/discord/callback", async (req, res) => {
             return res.redirect(`${targetOrigin}/account/?error=profile_fetch_failed`);
         }
 
-        const user = await processDiscordUser(discordUser);
+        const { user, nameCollision } = await processDiscordUser(discordUser);
 
         const token = jwt.sign(
             { id: user._id, username: user.username, avatar: user.avatar || null },
@@ -355,6 +395,9 @@ router.get("/discord/callback", async (req, res) => {
         redirectUrl.searchParams.set("username", user.username);
         if (user.avatar) {
             redirectUrl.searchParams.set("avatar", user.avatar);
+        }
+        if (nameCollision) {
+            redirectUrl.searchParams.set("name_collision", "true");
         }
 
         return res.redirect(redirectUrl.toString());
@@ -404,7 +447,7 @@ router.post("/discord/token", async (req, res) => {
             return res.status(400).json({ error: "Failed to fetch Discord user profile" });
         }
 
-        const user = await processDiscordUser(discordUser);
+        const { user, nameCollision } = await processDiscordUser(discordUser);
 
         const token = jwt.sign(
             { id: user._id, username: user.username, avatar: user.avatar || null },
@@ -415,6 +458,7 @@ router.post("/discord/token", async (req, res) => {
         return res.json({
             success: true,
             token,
+            nameCollision,
             user: {
                 id: user._id,
                 username: user.username,

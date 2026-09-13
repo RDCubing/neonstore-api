@@ -1,6 +1,7 @@
 const express = require("express");
 const jwt = require("jsonwebtoken");
 const AppSubmission = require("../models/AppSubmission");
+const User = require("../models/User");
 
 const router = express.Router();
 
@@ -9,7 +10,6 @@ const router = express.Router();
 ========================= */
 async function sendSubmissionEmbed(submission) {
     const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
-
     if (!webhookUrl) {
         console.log("Discord webhook URL not configured.");
         return;
@@ -95,7 +95,6 @@ async function sendSubmissionEmbed(submission) {
 ========================= */
 function getUser(req) {
     const authHeader = req.headers.authorization;
-
     if (!authHeader) return null;
 
     const token = authHeader.replace("Bearer ", "");
@@ -125,11 +124,16 @@ function isValidUrl(value) {
 router.post("/submit", async (req, res) => {
     try {
         const user = getUser(req);
-
         if (!user) {
             return res.status(401).json({
                 error: "Invalid or missing token"
             });
+        }
+
+        // Fetch live user to prevent stale token claims
+        const liveUser = await User.findById(user.id);
+        if (!liveUser) {
+            return res.status(404).json({ error: "User not found" });
         }
 
         const {
@@ -192,9 +196,9 @@ router.post("/submit", async (req, res) => {
             Description,
             DownloadUrl,
             status: "pending",
-            submittedBy: user.id,
-            submittedUsername: user.username,
-            submittedAvatar: user.avatar || null
+            submittedBy: liveUser._id,
+            submittedUsername: liveUser.username,
+            submittedAvatar: liveUser.avatar || null
         });
 
         await sendSubmissionEmbed(submission);
@@ -218,7 +222,6 @@ router.post("/submit", async (req, res) => {
 router.get("/mine", async (req, res) => {
     try {
         const user = getUser(req);
-
         if (!user) {
             return res.status(401).json({
                 error: "Invalid or missing token"
@@ -246,7 +249,6 @@ router.get("/mine", async (req, res) => {
 router.get("/pending", async (req, res) => {
     try {
         const user = getUser(req);
-
         if (!user) {
             return res.status(401).json({
                 error: "Invalid or missing token"
@@ -274,7 +276,6 @@ router.get("/pending", async (req, res) => {
 router.post("/approve/:id", async (req, res) => {
     try {
         const user = getUser(req);
-
         if (!user) {
             return res.status(401).json({
                 error: "Invalid or missing token"
@@ -282,7 +283,6 @@ router.post("/approve/:id", async (req, res) => {
         }
 
         const submission = await AppSubmission.findById(req.params.id);
-
         if (!submission) {
             return res.status(404).json({
                 error: "Submission not found"
@@ -311,7 +311,6 @@ router.post("/approve/:id", async (req, res) => {
 router.delete("/:id", async (req, res) => {
     try {
         const user = getUser(req);
-
         if (!user) {
             return res.status(401).json({
                 error: "Invalid or missing token"
@@ -319,7 +318,6 @@ router.delete("/:id", async (req, res) => {
         }
 
         const deleted = await AppSubmission.findByIdAndDelete(req.params.id);
-
         if (!deleted) {
             return res.status(404).json({
                 error: "Submission not found"

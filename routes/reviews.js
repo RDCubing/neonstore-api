@@ -1,6 +1,7 @@
 const express = require("express");
 const jwt = require("jsonwebtoken");
 const Review = require("../models/Review");
+const User = require("../models/User");
 
 const router = express.Router();
 
@@ -9,15 +10,13 @@ const router = express.Router();
 ========================= */
 function getUser(req) {
     const authHeader = req.headers.authorization;
-
     if (!authHeader) return null;
 
     const token = authHeader.replace("Bearer ", "");
 
     try {
         return jwt.verify(token, process.env.JWT_SECRET);
-    }
-    catch {
+    } catch {
         return null;
     }
 }
@@ -27,58 +26,53 @@ function getUser(req) {
 ========================= */
 async function sendReviewEmbed(review) {
     const webhookUrl = process.env.DISCORD_REVIEWS_URL;
-
     if (!webhookUrl) {
         console.log("Discord reviews webhook URL not configured.");
         return;
     }
 
     try {
-        const response = await fetch(
-            webhookUrl,
-            {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({
-                    embeds: [
-                        {
-                            title: "New WebStore Review",
-                            description: review.comment,
-                            thumbnail: review.avatar ? { url: review.avatar } : undefined,
-                            fields: [
-                                {
-                                    name: "Application",
-                                    value: String(review.appId),
-                                    inline: true
-                                },
-                                {
-                                    name: "Rating",
-                                    value: `${review.rating}/5`,
-                                    inline: true
-                                },
-                                {
-                                    name: "Submitted By",
-                                    value: review.username,
-                                    inline: true
-                                }
-                            ],
-                            footer: {
-                                text: "Geek Devs Community • WebStore Reviews"
+        const response = await fetch(webhookUrl, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                embeds: [
+                    {
+                        title: "New WebStore Review",
+                        description: review.comment,
+                        thumbnail: review.avatar ? { url: review.avatar } : undefined,
+                        fields: [
+                            {
+                                name: "Application",
+                                value: String(review.appId),
+                                inline: true
                             },
-                            timestamp: new Date().toISOString()
-                        }
-                    ]
-                })
-            }
-        );
+                            {
+                                name: "Rating",
+                                value: `${review.rating}/5`,
+                                inline: true
+                            },
+                            {
+                                name: "Submitted By",
+                                value: review.username,
+                                inline: true
+                            }
+                        ],
+                        footer: {
+                            text: "Geek Devs Community • WebStore Reviews"
+                        },
+                        timestamp: new Date().toISOString()
+                    }
+                ]
+            })
+        });
 
         if (!response.ok) {
             console.error("Discord review webhook failed:", response.status);
         }
-    }
-    catch (err) {
+    } catch (err) {
         console.error("Failed to send Discord review embed:", err);
     }
 }
@@ -89,15 +83,19 @@ async function sendReviewEmbed(review) {
 router.post("/", async (req, res) => {
     try {
         const user = getUser(req);
-
         if (!user) {
             return res.status(401).json({
                 error: "Invalid or missing token"
             });
         }
 
-        const { appId, rating, comment } = req.body;
+        // Fetch live user to prevent stale token claims
+        const liveUser = await User.findById(user.id);
+        if (!liveUser) {
+            return res.status(404).json({ error: "User not found" });
+        }
 
+        const { appId, rating, comment } = req.body;
         if (!appId || !rating || !comment) {
             return res.status(400).json({
                 error: "Missing fields"
@@ -106,13 +104,13 @@ router.post("/", async (req, res) => {
 
         const review = await Review.findOneAndUpdate(
             {
-                userId: user.id,
+                userId: liveUser._id,
                 appId: appId
             },
             {
-                userId: user.id,
-                username: user.username,
-                avatar: user.avatar || null,
+                userId: liveUser._id,
+                username: liveUser.username,
+                avatar: liveUser.avatar || null,
                 appId: appId,
                 rating: rating,
                 comment: comment,
@@ -131,8 +129,7 @@ router.post("/", async (req, res) => {
             success: true,
             review
         });
-    }
-    catch (err) {
+    } catch (err) {
         res.status(500).json({
             error: err.message
         });
@@ -146,14 +143,12 @@ router.get("/:appId", async (req, res) => {
     try {
         const reviews = await Review.find({
             appId: req.params.appId
-        })
-        .sort({
+        }).sort({
             updatedAt: -1
         });
 
         res.json(reviews);
-    }
-    catch (err) {
+    } catch (err) {
         res.status(500).json({
             error: err.message
         });
@@ -166,7 +161,6 @@ router.get("/:appId", async (req, res) => {
 router.delete("/:appId", async (req, res) => {
     try {
         const user = getUser(req);
-
         if (!user) {
             return res.status(401).json({
                 error: "Unauthorized"
@@ -187,8 +181,7 @@ router.delete("/:appId", async (req, res) => {
         res.json({
             success: true
         });
-    }
-    catch (err) {
+    } catch (err) {
         res.status(500).json({
             error: err.message
         });
