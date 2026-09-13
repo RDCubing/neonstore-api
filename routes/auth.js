@@ -64,11 +64,14 @@ async function processDiscordUser(discordUser) {
         ? `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.png`
         : null;
 
+// Only permit email linking if Discord explicitly confirmed the email is verified
+    const isEmailVerified = Boolean(discordUser.email && discordUser.verified);
+
     // 1. Locate existing account by permanent Discord Snowflake ID (or verified email fallback)
     let user = await User.findOne({
         $or: [
             { discordId: discordUser.id },
-            ...(discordUser.email ? [{ email: discordUser.email }] : [])
+            ...(isEmailVerified ? [{ email: discordUser.email }] : [])
         ]
     });
 
@@ -85,9 +88,9 @@ async function processDiscordUser(discordUser) {
             username = `${username}_${discordUser.id.slice(-4)}`;
         }
 
-        user = await User.create({
+		user = await User.create({
             username,
-            email: discordUser.email || `${discordUser.id}@discord.placeholder`,
+            email: isEmailVerified ? discordUser.email : `${discordUser.id}@discord.placeholder`,
             passwordHash,
             discordId: discordUser.id,
             avatar: avatarUrl
@@ -288,7 +291,7 @@ router.get("/discord/callback", async (req, res) => {
 
     let targetOrigin = ALLOWED_ORIGINS[0];
     let stateCsrf = null;
-
+12345
     if (state) {
         try {
             const decoded = JSON.parse(Buffer.from(state, "base64url").toString("utf-8"));
