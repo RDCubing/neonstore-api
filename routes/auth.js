@@ -55,6 +55,61 @@ async function sendNewUserEmbed(user) {
 }
 
 /* =========================
+   SHARED DISCORD USER HELPER
+========================= */
+async function processDiscordUser(discordUser) {
+    const avatarUrl = discordUser.avatar
+        ? `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.png`
+        : null;
+
+    let user = await User.findOne({
+        $or: [
+            { discordId: discordUser.id },
+            ...(discordUser.email ? [{ email: discordUser.email }] : [])
+        ]
+    });
+
+    if (!user) {
+        const randomPassword = crypto.randomBytes(32).toString("hex");
+        const passwordHash = await bcrypt.hash(randomPassword, 10);
+
+        let username = (discordUser.global_name || discordUser.username || "User")
+            .replace(/[^A-Za-z0-9_]/g, "")
+            .slice(0, 16);
+
+        if (username.length < 3) username = "User_" + discordUser.id.slice(-4);
+
+        const existingUsername = await User.findOne({ username });
+        if (existingUsername) {
+            username = `${username}_${Math.floor(100 + Math.random() * 900)}`;
+        }
+
+        user = await User.create({
+            username,
+            email: discordUser.email || `${discordUser.id}@discord.placeholder`,
+            passwordHash,
+            discordId: discordUser.id,
+            avatar: avatarUrl
+        });
+
+        await sendNewUserEmbed(user);
+    } else {
+        let updated = false;
+        if (user.avatar !== avatarUrl) {
+            user.avatar = avatarUrl;
+            updated = true;
+        }
+        if (!user.discordId) {
+            user.discordId = discordUser.id;
+            updated = true;
+        }
+        if (updated) await user.save();
+    }
+
+    return user;
+}
+
+/* =========================
    REGISTER
 ========================= */
 router.post("/register", async (req, res) => {
@@ -140,7 +195,7 @@ router.post("/login", async (req, res) => {
 });
 
 /* =========================
-   DISCORD OAUTH2
+   DISCORD OAUTH2 (BROWSER)
 ========================= */
 router.get("/discord", (req, res) => {
     let detectedOrigin = req.query.origin;
@@ -209,7 +264,6 @@ router.get("/discord/callback", async (req, res) => {
     }
 
     try {
-        // 1. Exchange Code for Access Token
         const tokenRes = await fetch("https://discord.com/api/oauth2/token", {
             method: "POST",
             headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -228,7 +282,6 @@ router.get("/discord/callback", async (req, res) => {
             return res.redirect(`${targetOrigin}/account/?error=token_exchange_failed`);
         }
 
-        // 2. Fetch User Profile
         const userRes = await fetch("https://discord.com/api/users/@me", {
             headers: { Authorization: `Bearer ${tokenData.access_token}` }
         });
@@ -239,60 +292,8 @@ router.get("/discord/callback", async (req, res) => {
             return res.redirect(`${targetOrigin}/account/?error=profile_fetch_failed`);
         }
 
-        // Compute Discord Avatar URL
-        const avatarUrl = discordUser.avatar
-            ? `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.png`
-            : null;
+        const user = await processDiscordUser(discordUser);
 
-        // 3. Find or Create User in MongoDB
-        let user = await User.findOne({
-            $or: [
-                { discordId: discordUser.id },
-                ...(discordUser.email ? [{ email: discordUser.email }] : [])
-            ]
-        });
-
-        if (!user) {
-            const randomPassword = crypto.randomBytes(32).toString("hex");
-            const passwordHash = await bcrypt.hash(randomPassword, 10);
-
-            // Generate clean username fallback
-            let username = (discordUser.global_name || discordUser.username || "User")
-                .replace(/[^A-Za-z0-9_]/g, "")
-                .slice(0, 16);
-
-            if (username.length < 3) username = "User_" + discordUser.id.slice(-4);
-
-            // Check if username taken, append digits if necessary
-            const existingUsername = await User.findOne({ username });
-            if (existingUsername) {
-                username = `${username}_${Math.floor(100 + Math.random() * 900)}`;
-            }
-
-            user = await User.create({
-                username,
-                email: discordUser.email || `${discordUser.id}@discord.placeholder`,
-                passwordHash,
-                discordId: discordUser.id,
-                avatar: avatarUrl
-            });
-
-            await sendNewUserEmbed(user);
-        } else {
-            // Update avatar and discordId if missing or changed
-            let updated = false;
-            if (user.avatar !== avatarUrl) {
-                user.avatar = avatarUrl;
-                updated = true;
-            }
-            if (!user.discordId) {
-                user.discordId = discordUser.id;
-                updated = true;
-            }
-            if (updated) await user.save();
-        }
-
-        // 4. Issue App JWT
         const token = jwt.sign(
             { id: user._id, username: user.username, avatar: user.avatar || null },
             process.env.JWT_SECRET,
@@ -310,6 +311,69 @@ router.get("/discord/callback", async (req, res) => {
     } catch (err) {
         console.error("Discord OAuth Error:", err);
         return res.redirect(`${targetOrigin}/account/?error=oauth_failed`);
+    }
+});
+
+/* =========================
+   NATIVE API TOKEN EXCHANGE
+========================= */
+router.post("/discord/token", async (req, res) => {
+    const { code, redirect_uri } = req.body;
+
+    if (!code) {
+        return res.status(400).json({ error: "Missing authorization code" });
+    }
+
+    try {
+        const tokenRes = await fetch("https://discord.com/api/oauth2/token", {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({
+                client_id: process.env.DISCORD_CLIENT_ID,
+                client_secret: process.env.DISCORD_CLIENT_SECRET,
+                grant_type: "authorization_code",
+                code,
+                redirect_uri: redirect_uri || process.env.DISCORD_REDIRECT_URI
+            }).toString()
+        });
+
+        const tokenData = await tokenRes.json();
+        if (!tokenRes.ok || !tokenData.access_token) {
+            return res.status(400).json({
+                error: "Token exchange failed",
+                details: tokenData
+            });
+        }
+
+        const userRes = await fetch("https://discord.com/api/users/@me", {
+            headers: { Authorization: `Bearer ${tokenData.access_token}` }
+        });
+
+        const discordUser = await userRes.json();
+        if (!userRes.ok || !discordUser.id) {
+            return res.status(400).json({ error: "Failed to fetch Discord user profile" });
+        }
+
+        const user = await processDiscordUser(discordUser);
+
+        const token = jwt.sign(
+            { id: user._id, username: user.username, avatar: user.avatar || null },
+            process.env.JWT_SECRET,
+            { expiresIn: "30d" }
+        );
+
+        return res.json({
+            success: true,
+            token,
+            user: {
+                id: user._id,
+                username: user.username,
+                avatar: user.avatar
+            }
+        });
+    } catch (err) {
+        console.error("Native Discord OAuth Error:", err);
+        return res.status(500).json({ error: "Internal server error" });
     }
 });
 
