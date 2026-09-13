@@ -73,15 +73,13 @@ async function processDiscordUser(discordUser) {
         const randomPassword = crypto.randomBytes(32).toString("hex");
         const passwordHash = await bcrypt.hash(randomPassword, 10);
 
-        let username = (discordUser.global_name || discordUser.username || "User")
-            .replace(/[^A-Za-z0-9_]/g, "")
-            .slice(0, 16);
+        // Keep raw Discord handle without cutting, slicing, or regex character stripping
+        let username = discordUser.username || discordUser.global_name || `User_${discordUser.id}`;
 
-        if (username.length < 3) username = "User_" + discordUser.id.slice(-4);
-
+        // Only append discord discriminator/snippet if an existing account holds this exact username
         const existingUsername = await User.findOne({ username });
         if (existingUsername) {
-            username = `${username}_${Math.floor(100 + Math.random() * 900)}`;
+            username = `${username}_${discordUser.id.slice(-4)}`;
         }
 
         user = await User.create({
@@ -95,6 +93,17 @@ async function processDiscordUser(discordUser) {
         await sendNewUserEmbed(user);
     } else {
         let updated = false;
+
+        // Keep username up-to-date with Discord if changed, assuming it doesn't collide
+        const currentDiscordName = discordUser.username || discordUser.global_name;
+        if (currentDiscordName && user.username !== currentDiscordName) {
+            const nameTaken = await User.findOne({ username: currentDiscordName, _id: { $ne: user._id } });
+            if (!nameTaken) {
+                user.username = currentDiscordName;
+                updated = true;
+            }
+        }
+
         if (user.avatar !== avatarUrl) {
             user.avatar = avatarUrl;
             updated = true;
