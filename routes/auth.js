@@ -5,6 +5,8 @@ const validator = require("validator");
 const crypto = require("crypto");
 
 const User = require("../models/User");
+const Review = require("../models/Review");
+const Comment = require("../models/Comment");
 
 const router = express.Router();
 
@@ -62,6 +64,7 @@ async function processDiscordUser(discordUser) {
         ? `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.png`
         : null;
 
+    // 1. Locate existing account by permanent Discord Snowflake ID (or verified email fallback)
     let user = await User.findOne({
         $or: [
             { discordId: discordUser.id },
@@ -76,7 +79,7 @@ async function processDiscordUser(discordUser) {
         // Keep raw Discord handle without cutting, slicing, or regex character stripping
         let username = discordUser.username || discordUser.global_name || `User_${discordUser.id}`;
 
-        // Only append discord discriminator/snippet if an existing account holds this exact username
+        // Handle collision only if another account took this exact username
         const existingUsername = await User.findOne({ username });
         if (existingUsername) {
             username = `${username}_${discordUser.id.slice(-4)}`;
@@ -92,27 +95,62 @@ async function processDiscordUser(discordUser) {
 
         await sendNewUserEmbed(user);
     } else {
-        let updated = false;
+        let userUpdated = false;
+        const oldUsername = user.username;
+        const oldAvatar = user.avatar;
 
-        // Keep username up-to-date with Discord if changed, assuming it doesn't collide
+        // 2. Check for username updates
         const currentDiscordName = discordUser.username || discordUser.global_name;
-        if (currentDiscordName && user.username !== currentDiscordName) {
-            const nameTaken = await User.findOne({ username: currentDiscordName, _id: { $ne: user._id } });
+        let newUsername = oldUsername;
+
+        if (currentDiscordName && oldUsername !== currentDiscordName) {
+            const nameTaken = await User.findOne({ 
+                username: currentDiscordName, 
+                _id: { $ne: user._id } 
+            });
+
             if (!nameTaken) {
                 user.username = currentDiscordName;
-                updated = true;
+                newUsername = currentDiscordName;
+                userUpdated = true;
             }
         }
 
-        if (user.avatar !== avatarUrl) {
+        // 3. Check for avatar updates
+        let newAvatar = oldAvatar;
+        if (oldAvatar !== avatarUrl) {
             user.avatar = avatarUrl;
-            updated = true;
+            newAvatar = avatarUrl;
+            userUpdated = true;
         }
+
+        // Ensure permanent ID is linked
         if (!user.discordId) {
             user.discordId = discordUser.id;
-            updated = true;
+            userUpdated = true;
         }
-        if (updated) await user.save();
+
+        if (userUpdated) {
+            await user.save();
+
+            // 4. Cascade updates across all historical Reviews and Comments
+            const updatePayload = {};
+            if (newUsername !== oldUsername) updatePayload.username = newUsername;
+            if (newAvatar !== oldAvatar) updatePayload.avatar = newAvatar;
+
+            if (Object.keys(updatePayload).length > 0) {
+                await Promise.all([
+                    Review.updateMany(
+                        { $or: [{ userId: user._id }, { username: oldUsername }] },
+                        { $set: updatePayload }
+                    ),
+                    Comment.updateMany(
+                        { $or: [{ userId: user._id }, { username: oldUsername }] },
+                        { $set: updatePayload }
+                    )
+                ]);
+            }
+        }
     }
 
     return user;
