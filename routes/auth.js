@@ -7,6 +7,7 @@ const crypto = require("crypto");
 const User = require("../models/User");
 const Review = require("../models/Review");
 const Comment = require("../models/Comment");
+const AppSubmission = require("../models/AppSubmission");
 
 const router = express.Router();
 
@@ -27,6 +28,7 @@ async function sendNewUserEmbed(user) {
         await fetch(webhookUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
+            signal: AbortSignal.timeout(10000),
             body: JSON.stringify({
                 embeds: [
                     {
@@ -145,13 +147,19 @@ async function processDiscordUser(discordUser) {
         if (userUpdated) {
             await user.save();
 
-            // 4. Cascade updates across all historical Reviews and Comments
+            // 4. Cascade updates across Reviews, Comments, and AppSubmissions
             const updatePayload = {};
             if (newUsername !== oldUsername) updatePayload.username = newUsername;
             if (newAvatar !== oldAvatar) updatePayload.avatar = newAvatar;
 
+            const appUpdatePayload = {};
+            if (newUsername !== oldUsername) appUpdatePayload.submittedUsername = newUsername;
+            if (newAvatar !== oldAvatar) appUpdatePayload.submittedAvatar = newAvatar;
+
+            const updateTasks = [];
+
             if (Object.keys(updatePayload).length > 0) {
-                await Promise.all([
+                updateTasks.push(
                     Review.updateMany(
                         { $or: [{ userId: user._id }, { username: oldUsername }] },
                         { $set: updatePayload }
@@ -160,7 +168,20 @@ async function processDiscordUser(discordUser) {
                         { $or: [{ userId: user._id }, { username: oldUsername }] },
                         { $set: updatePayload }
                     )
-                ]);
+                );
+            }
+
+            if (Object.keys(appUpdatePayload).length > 0) {
+                updateTasks.push(
+                    AppSubmission.updateMany(
+                        { $or: [{ submittedBy: user._id }, { submittedUsername: oldUsername }] },
+                        { $set: appUpdatePayload }
+                    )
+                );
+            }
+
+            if (updateTasks.length > 0) {
+                await Promise.all(updateTasks);
             }
         }
     }
@@ -289,6 +310,7 @@ router.get("/me", async (req, res) => {
 ========================= */
 router.get("/discord", (req, res) => {
     let detectedOrigin = req.query.origin;
+    const appProtocol = req.query.app_protocol || null;
 
     if (!detectedOrigin && req.headers.referer) {
         try {
@@ -312,7 +334,7 @@ router.get("/discord", (req, res) => {
     });
 
     const statePayload = Buffer.from(
-        JSON.stringify({ origin: activeDomain, csrf })
+        JSON.stringify({ origin: activeDomain, csrf, appProtocol })
     ).toString("base64url");
 
     const params = new URLSearchParams({
@@ -331,6 +353,7 @@ router.get("/discord/callback", async (req, res) => {
 
     let targetOrigin = ALLOWED_ORIGINS[0];
     let stateCsrf = null;
+    let appProtocol = null;
 
     if (state) {
         try {
@@ -339,6 +362,7 @@ router.get("/discord/callback", async (req, res) => {
                 targetOrigin = decoded.origin;
             }
             stateCsrf = decoded.csrf;
+            appProtocol = decoded.appProtocol || null;
         } catch {}
     }
 
@@ -357,6 +381,7 @@ router.get("/discord/callback", async (req, res) => {
         const tokenRes = await fetch("https://discord.com/api/oauth2/token", {
             method: "POST",
             headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            signal: AbortSignal.timeout(10000),
             body: new URLSearchParams({
                 client_id: process.env.DISCORD_CLIENT_ID,
                 client_secret: process.env.DISCORD_CLIENT_SECRET,
@@ -373,7 +398,8 @@ router.get("/discord/callback", async (req, res) => {
         }
 
         const userRes = await fetch("https://discord.com/api/users/@me", {
-            headers: { Authorization: `Bearer ${tokenData.access_token}` }
+            headers: { Authorization: `Bearer ${tokenData.access_token}` },
+            signal: AbortSignal.timeout(10000)
         });
 
         const discordUser = await userRes.json();
@@ -390,15 +416,17 @@ router.get("/discord/callback", async (req, res) => {
             { expiresIn: "30d" }
         );
 
-		const redirectUrl = new URL(`${targetOrigin}/account/`);
+        const redirectUrl = new URL(`${targetOrigin}/account/`);
         redirectUrl.searchParams.set("token", token);
-        // Explicitly encode in case of emojis, spaces, or # symbols
         redirectUrl.searchParams.set("username", encodeURIComponent(user.username));
         if (user.avatar) {
             redirectUrl.searchParams.set("avatar", encodeURIComponent(user.avatar));
         }
         if (nameCollision) {
             redirectUrl.searchParams.set("name_collision", "true");
+        }
+        if (appProtocol) {
+            redirectUrl.searchParams.set("app_protocol", encodeURIComponent(appProtocol));
         }
 
         return res.redirect(redirectUrl.toString());
@@ -422,6 +450,7 @@ router.post("/discord/token", async (req, res) => {
         const tokenRes = await fetch("https://discord.com/api/oauth2/token", {
             method: "POST",
             headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            signal: AbortSignal.timeout(10000),
             body: new URLSearchParams({
                 client_id: process.env.DISCORD_CLIENT_ID,
                 client_secret: process.env.DISCORD_CLIENT_SECRET,
@@ -440,7 +469,8 @@ router.post("/discord/token", async (req, res) => {
         }
 
         const userRes = await fetch("https://discord.com/api/users/@me", {
-            headers: { Authorization: `Bearer ${tokenData.access_token}` }
+            headers: { Authorization: `Bearer ${tokenData.access_token}` },
+            signal: AbortSignal.timeout(10000)
         });
 
         const discordUser = await userRes.json();
