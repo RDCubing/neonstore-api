@@ -390,11 +390,12 @@ router.get("/discord/callback", async (req, res) => {
             { expiresIn: "30d" }
         );
 
-        const redirectUrl = new URL(`${targetOrigin}/account/`);
+		const redirectUrl = new URL(`${targetOrigin}/account/`);
         redirectUrl.searchParams.set("token", token);
-        redirectUrl.searchParams.set("username", user.username);
+        // Explicitly encode in case of emojis, spaces, or # symbols
+        redirectUrl.searchParams.set("username", encodeURIComponent(user.username));
         if (user.avatar) {
-            redirectUrl.searchParams.set("avatar", user.avatar);
+            redirectUrl.searchParams.set("avatar", encodeURIComponent(user.avatar));
         }
         if (nameCollision) {
             redirectUrl.searchParams.set("name_collision", "true");
