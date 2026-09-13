@@ -14,6 +14,11 @@ const CommentSchema = new mongoose.Schema(
         trim: true
     },
 
+    avatar: {
+        type: String,
+        default: null
+    },
+
     newsId: {
         type: String,
         required: true,

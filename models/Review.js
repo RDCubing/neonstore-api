@@ -14,6 +14,11 @@ const ReviewSchema = new mongoose.Schema(
         trim: true
     },
 
+    avatar: {
+        type: String,
+        default: null
+    },
+
     appId: {
         type: String,
         required: true,

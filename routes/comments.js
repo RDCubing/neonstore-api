@@ -66,6 +66,11 @@ async function sendCommentEmbed(comment) {
                                 description:
                                     comment.comment,
 
+                                thumbnail:
+                                    comment.avatar
+                                        ? { url: comment.avatar }
+                                        : undefined,
+
                                 fields: [
                                     {
                                         name:
@@ -165,6 +170,7 @@ router.post("/", async (req, res) => {
             {
                 userId: user.id,
                 username: user.username,
+                avatar: user.avatar || null,
                 newsId: newsId,
                 comment: comment,
                 updatedAt: new Date()
@@ -177,7 +183,7 @@ router.post("/", async (req, res) => {
             }
         );
 		
-		await sendCommentEmbed(result);
+        await sendCommentEmbed(result);
 
 
         res.json({

@@ -25,109 +25,61 @@ function getUser(req) {
 /* =========================
    DISCORD REVIEW EMBED
 ========================= */
-
 async function sendReviewEmbed(review) {
-
-    const webhookUrl =
-        process.env.DISCORD_REVIEWS_URL;
+    const webhookUrl = process.env.DISCORD_REVIEWS_URL;
 
     if (!webhookUrl) {
-        console.log(
-            "Discord reviews webhook URL not configured."
-        );
+        console.log("Discord reviews webhook URL not configured.");
         return;
     }
 
     try {
-
-        const response =
-            await fetch(
-                webhookUrl,
-                {
-                    method: "POST",
-
-                    headers: {
-                        "Content-Type":
-                            "application/json"
-                    },
-
-                    body: JSON.stringify({
-
-                        embeds: [
-                            {
-                                title:
-                                    "New WebStore Review",
-
-                                description:
-                                    review.comment,
-
-                                fields: [
-                                    {
-                                        name:
-                                            "Application",
-
-                                        value:
-                                            String(
-                                                review.appId
-                                            ),
-
-                                        inline:
-                                            true
-                                    },
-
-                                    {
-                                        name:
-                                            "Rating",
-
-                                        value:
-                                            `${review.rating}/5`,
-
-                                        inline:
-                                            true
-                                    },
-
-                                    {
-                                        name:
-                                            "Submitted By",
-
-                                        value:
-                                            review.username,
-
-                                        inline:
-                                            true
-                                    }
-                                ],
-
-                                footer: {
-                                    text:
-                                        "Geek Devs Community • WebStore Reviews"
+        const response = await fetch(
+            webhookUrl,
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    embeds: [
+                        {
+                            title: "New WebStore Review",
+                            description: review.comment,
+                            thumbnail: review.avatar ? { url: review.avatar } : undefined,
+                            fields: [
+                                {
+                                    name: "Application",
+                                    value: String(review.appId),
+                                    inline: true
                                 },
-
-                                timestamp:
-                                    new Date()
-                                        .toISOString()
-                            }
-                        ]
-
-                    })
-                }
-            );
-
-        if (!response.ok) {
-            console.error(
-                "Discord review webhook failed:",
-                response.status
-            );
-        }
-
-    }
-    catch (err) {
-
-        console.error(
-            "Failed to send Discord review embed:",
-            err
+                                {
+                                    name: "Rating",
+                                    value: `${review.rating}/5`,
+                                    inline: true
+                                },
+                                {
+                                    name: "Submitted By",
+                                    value: review.username,
+                                    inline: true
+                                }
+                            ],
+                            footer: {
+                                text: "Geek Devs Community • WebStore Reviews"
+                            },
+                            timestamp: new Date().toISOString()
+                        }
+                    ]
+                })
+            }
         );
 
+        if (!response.ok) {
+            console.error("Discord review webhook failed:", response.status);
+        }
+    }
+    catch (err) {
+        console.error("Failed to send Discord review embed:", err);
     }
 }
 
@@ -160,6 +112,7 @@ router.post("/", async (req, res) => {
             {
                 userId: user.id,
                 username: user.username,
+                avatar: user.avatar || null,
                 appId: appId,
                 rating: rating,
                 comment: comment,
@@ -172,7 +125,7 @@ router.post("/", async (req, res) => {
             }
         );
 		
-		await sendReviewEmbed(review);
+        await sendReviewEmbed(review);
 
         res.json({
             success: true,

@@ -271,4 +271,118 @@ const { username, password } = req.body;
 
 });
 
+const crypto = require("crypto");
+
+// Whitelist of domains your site is allowed to run on
+const ALLOWED_ORIGINS = [
+    "https://gdcr.dankassassin368.com",
+    "https://rdcubing.github.io",
+    "http://localhost:3000" // For local development
+];
+
+/* =========================
+   DISCORD OAUTH2 LOGIN
+========================= */
+
+// 1. Initiate OAuth
+router.get("/discord", (req, res) => {
+    // 1. Prioritize ?origin= query param, 2. check Referer header, 3. fallback to default
+    let detectedOrigin = req.query.origin;
+
+    if (!detectedOrigin && req.headers.referer) {
+        try {
+            detectedOrigin = new URL(req.headers.referer).origin;
+        } catch {
+            detectedOrigin = null;
+        }
+    }
+
+    // Ensure it matches your approved domain list
+    const activeDomain = ALLOWED_ORIGINS.includes(detectedOrigin) 
+        ? detectedOrigin 
+        : ALLOWED_ORIGINS[0];
+
+    const csrf = crypto.randomBytes(16).toString("hex");
+
+    // Store CSRF in cookie
+    res.cookie("oauth_state", csrf, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 10 * 60 * 1000
+    });
+
+    // Pack the actual origin into the state payload
+    const statePayload = Buffer.from(
+        JSON.stringify({ origin: activeDomain, csrf })
+    ).toString("base64url");
+
+    const params = new URLSearchParams({
+        client_id: process.env.DISCORD_CLIENT_ID,
+        redirect_uri: process.env.DISCORD_REDIRECT_URI,
+        response_type: "code",
+        scope: "identify email",
+        state: statePayload
+    });
+
+    res.redirect(`https://discord.com/api/oauth2/authorize?${params.toString()}`);
+});
+
+// 2. Callback
+router.get("/discord/callback", async (req, res) => {
+    const { code, state } = req.query;
+
+    let targetOrigin = ALLOWED_ORIGINS[0];
+    let stateCsrf = null;
+
+    // Unpack the exact domain that sent the request
+    if (state) {
+        try {
+            const decoded = JSON.parse(
+                Buffer.from(state, "base64url").toString("utf-8")
+            );
+            if (ALLOWED_ORIGINS.includes(decoded.origin)) {
+                targetOrigin = decoded.origin;
+            }
+            stateCsrf = decoded.csrf;
+        } catch {
+            // Keep fallback
+        }
+    }
+
+    const savedState = req.cookies?.oauth_state;
+    res.clearCookie("oauth_state");
+
+    if (!code) {
+        return res.redirect(`${targetOrigin}/account/?error=no_code`);
+    }
+
+    if (savedState && stateCsrf !== savedState) {
+        return res.redirect(`${targetOrigin}/account/?error=invalid_state`);
+    }
+
+    try {
+        // Exchange code with Discord and process user...
+        // (Keep your existing token exchange and User logic here)
+
+        const token = jwt.sign(
+            { id: user._id, username: user.username, avatar: user.avatar },
+            process.env.JWT_SECRET,
+            { expiresIn: "30d" }
+        );
+
+        // Redirect back to the exact domain the user came from
+        const redirectUrl = new URL(`${targetOrigin}/account/`);
+        redirectUrl.searchParams.set("token", token);
+        redirectUrl.searchParams.set("username", user.username);
+        if (user.avatar) {
+            redirectUrl.searchParams.set("avatar", user.avatar);
+        }
+
+        res.redirect(redirectUrl.toString());
+    } catch (err) {
+        res.redirect(`${targetOrigin}/account/?error=oauth_failed`);
+    }
+});
+
 module.exports = router;

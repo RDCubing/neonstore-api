@@ -37,10 +37,10 @@ const AppSubmissionSchema = new mongoose.Schema(
     },
 
     DetailImagePath: {
-		type: String,
-		required: true,
-		trim: true
-	},
+        type: String,
+        required: true,
+        trim: true
+    },
 
     Version: {
         type: String,
@@ -69,12 +69,6 @@ const AppSubmissionSchema = new mongoose.Schema(
         trim: true
     },
 
-    /*
-     * Submission status
-     *
-     * pending  = waiting for admin review
-     * approved = approved by admin
-     */
     status: {
         type: String,
         enum: [
@@ -86,9 +80,6 @@ const AppSubmissionSchema = new mongoose.Schema(
         index: true
     },
 
-    /*
-     * User who submitted the application
-     */
     submittedBy: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "User",
@@ -100,15 +91,15 @@ const AppSubmissionSchema = new mongoose.Schema(
         type: String,
         required: true,
         trim: true
+    },
+
+    submittedAvatar: {
+        type: String,
+        default: null
     }
 },
 {
     timestamps: true
 });
 
-
-module.exports =
-    mongoose.model(
-        "AppSubmission",
-        AppSubmissionSchema
-    );
+module.exports = mongoose.model("AppSubmission", AppSubmissionSchema);
