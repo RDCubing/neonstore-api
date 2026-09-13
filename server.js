@@ -3,6 +3,7 @@ require("dotenv").config();
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
+const cookieParser = require("cookie-parser");
 
 const app = express();
 
@@ -11,18 +12,18 @@ const HOST = process.env.HOST || "0.0.0.0";
 
 app.use(cors());
 app.use(express.json());
+app.use(cookieParser());
+
+// Request logger to track incoming routing
+app.use((req, res, next) => {
+    console.log(`[INCOMING] ${req.method} ${req.originalUrl}`);
+    next();
+});
 
 app.use("/ns-status/auth", require("./routes/auth"));
 app.use("/ns-status/reviews", require("./routes/reviews"));
-app.use(
-    "/ns-status/comments",
-    require("./routes/comments")
-);
-
-app.use(
-    "/ns-status/apps",
-    require("./routes/apps")
-);
+app.use("/ns-status/comments", require("./routes/comments"));
+app.use("/ns-status/apps", require("./routes/apps"));
 
 app.get("/ns-status", (req, res) => {
     res.send("NeonStore API running ✔");
