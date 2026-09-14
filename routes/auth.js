@@ -293,12 +293,26 @@ router.get("/me", async (req, res) => {
             return res.status(404).json({ error: "User not found" });
         }
 
+        // Count reviews and comments matching user._id (or user.username as fallback)
+        const [reviewCount, commentCount] = await Promise.all([
+            Review.countDocuments({ 
+                $or: [{ userId: user._id }, { username: user.username }] 
+            }),
+            Comment.countDocuments({ 
+                $or: [{ userId: user._id }, { username: user.username }] 
+            })
+        ]);
+
         return res.json({
             id: user._id,
             username: user.username,
             avatar: user.avatar || null,
             email: user.email,
-            discordId: user.discordId || null
+            discordId: user.discordId || null,
+            stats: {
+                reviews: reviewCount,
+                comments: commentCount
+            }
         });
     } catch (err) {
         return res.status(401).json({ error: "Invalid or expired token" });
